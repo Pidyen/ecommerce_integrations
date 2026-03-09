@@ -10,8 +10,10 @@
   "section_break_2",
   "shopify_url",
   "column_break_3",
-  "password",
-  "shared_secret",
+  "api_key",
+  "client_secret",
+  "access_token",
+  "authorization_status",
   "section_break_4",
   "webhooks",
   "customer_settings_section",
@@ -89,16 +91,30 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "password",
-   "fieldtype": "Password",
-   "label": "Password / Access Token",
+   "fieldname": "api_key",
+   "fieldtype": "Data",
+   "label": "API Key (Client ID)",
    "mandatory_depends_on": "eval:doc.enable_shopify"
   },
   {
-   "fieldname": "shared_secret",
-   "fieldtype": "Data",
-   "label": "Shared secret / API Secret",
+   "fieldname": "client_secret",
+   "fieldtype": "Password",
+   "label": "Client Secret (API Secret Key)",
    "mandatory_depends_on": "eval:doc.enable_shopify"
+  },
+  {
+   "fieldname": "access_token",
+   "fieldtype": "Password",
+   "label": "Access Token",
+   "description": "Auto-filled via OAuth. Can be pasted manually for legacy custom apps."
+  },
+  {
+   "fieldname": "authorization_status",
+   "fieldtype": "Select",
+   "label": "Authorization Status",
+   "options": "Not Connected\nConnected",
+   "default": "Not Connected",
+   "read_only": 1
   },
   {
    "collapsible": 1,

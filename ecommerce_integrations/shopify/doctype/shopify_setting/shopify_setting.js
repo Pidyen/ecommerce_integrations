@@ -26,6 +26,57 @@ frappe.ui.form.on("Shopify Setting", {
 	},
 
 	refresh: function (frm) {
+		// Connection status indicator
+		if (frm.doc.authorization_status === "Connected") {
+			frm.dashboard.set_headline(__("Connected to Shopify"), "green");
+		}
+
+		// OAuth Connect button — shown when not yet connected
+		if (frm.doc.authorization_status !== "Connected") {
+			frm.add_custom_button(
+				__("Connect to Shopify"),
+				function () {
+					if (!frm.doc.shopify_url || !frm.doc.api_key) {
+						frappe.msgprint(
+							__("Please fill in Shop URL, API Key, and Client Secret first, then save.")
+						);
+						return;
+					}
+					const redirect = () => {
+						window.location.href =
+							"/api/method/ecommerce_integrations.shopify.connection.initiate_oauth";
+					};
+					if (frm.dirty()) {
+						frm.save().then(redirect);
+					} else {
+						redirect();
+					}
+				},
+				__("Shopify")
+			);
+		}
+
+		// Register Webhooks button
+		if (frm.doc.authorization_status === "Connected" || frm.doc.access_token) {
+			frm.add_custom_button(
+				__("Register Webhooks"),
+				function () {
+					frappe.call({
+						doc: frm.doc,
+						method: "register_webhooks_manual",
+						freeze: true,
+						freeze_message: __("Registering webhooks..."),
+						callback: (r) => {
+							if (!r.exc) {
+								frm.reload_doc();
+							}
+						},
+					});
+				},
+				__("Shopify")
+			);
+		}
+
 		frm.add_custom_button(__("Import Products"), function () {
 			frappe.set_route("shopify-import-products");
 		});

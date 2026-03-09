@@ -40,7 +40,17 @@ class ShopifySetting(SettingController):
 
 		if self.shopify_url:
 			self.shopify_url = self.shopify_url.replace("https://", "")
-		self._handle_webhooks()
+
+		# Unregister webhooks when disabling
+		if not self.is_enabled() and self.webhooks:
+			try:
+				access_token = self.get_password("access_token")
+				if access_token:
+					connection.unregister_webhooks(self.shopify_url, access_token)
+			except Exception:
+				pass  # token might be invalid, just clear local records
+			self.webhooks = []
+
 		self._validate_warehouse_links()
 		self._initalize_default_values()
 
@@ -51,23 +61,27 @@ class ShopifySetting(SettingController):
 		if self.is_enabled() and not self.is_old_data_migrated:
 			migrate_from_old_connector()
 
-	def _handle_webhooks(self):
-		if self.is_enabled() and not self.webhooks:
-			new_webhooks = connection.register_webhooks(self.shopify_url, self.get_password("password"))
+	@frappe.whitelist()
+	def register_webhooks_manual(self):
+		"""Manually register webhooks. Used when access token is pasted directly
+		or to re-register webhooks after OAuth."""
+		access_token = self.get_password("access_token")
+		if not access_token:
+			frappe.throw(_("Access Token is required to register webhooks."))
 
-			if not new_webhooks:
-				msg = _("Failed to register webhooks with Shopify.") + "<br>"
-				msg += _("Please check credentials and retry.") + " "
-				msg += _("Disabling and re-enabling the integration might also help.")
-				frappe.throw(msg)
+		self.webhooks = []
 
-			for webhook in new_webhooks:
-				self.append("webhooks", {"webhook_id": webhook.id, "method": webhook.topic})
+		new_webhooks = connection.register_webhooks(self.shopify_url, access_token)
+		if not new_webhooks:
+			frappe.throw(_("Failed to register webhooks. Check credentials and retry."))
 
-		elif not self.is_enabled():
-			connection.unregister_webhooks(self.shopify_url, self.get_password("password"))
+		for webhook in new_webhooks:
+			self.append("webhooks", {"webhook_id": webhook.id, "method": webhook.topic})
 
-			self.webhooks = list()  # remove all webhooks
+		self.flags.ignore_validate = True
+		self.save(ignore_permissions=True)
+
+		frappe.msgprint(_("Webhooks registered successfully."))
 
 	def _validate_warehouse_links(self):
 		for wh_map in self.shopify_warehouse_mapping:

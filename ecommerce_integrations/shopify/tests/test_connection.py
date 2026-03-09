@@ -20,7 +20,7 @@ class TestShopifyConnection(IntegrationTestCase):
 	@unittest.skip("Can't run these tests in CI")
 	def test_register_webhooks(self):
 		webhooks = connection.register_webhooks(
-			self.setting.shopify_url, self.setting.get_password("password")
+			self.setting.shopify_url, self.setting.get_password("access_token")
 		)
 
 		self.assertEqual(len(webhooks), len(connection.WEBHOOK_EVENTS))
@@ -30,10 +30,10 @@ class TestShopifyConnection(IntegrationTestCase):
 
 	@unittest.skip("Can't run these tests in CI")
 	def test_unregister_webhooks(self):
-		connection.unregister_webhooks(self.setting.shopify_url, self.setting.get_password("password"))
+		connection.unregister_webhooks(self.setting.shopify_url, self.setting.get_password("access_token"))
 
 		callback_url = connection.get_callback_url()
 
-		with Session.temp(self.setting.shopify_url, API_VERSION, self.setting.get_password("password")):
+		with Session.temp(self.setting.shopify_url, API_VERSION, self.setting.get_password("access_token")):
 			for wh in Webhook.find():
 				self.assertNotEqual(wh.address, callback_url)

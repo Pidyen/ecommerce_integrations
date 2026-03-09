@@ -1,7 +1,5 @@
 import os
 import sys
-from unittest.mock import patch
-
 import frappe
 import shopify
 from erpnext import get_default_cost_center
@@ -42,47 +40,46 @@ class TestCase(IntegrationTestCase):
 		super().setUpClass()
 
 		# Now setup Shopify settings with test data
-		with patch(
-			"ecommerce_integrations.shopify.doctype.shopify_setting.shopify_setting.ShopifySetting._handle_webhooks"
-		):
-			setting = frappe.get_doc(SETTING_DOCTYPE)
+		setting = frappe.get_doc(SETTING_DOCTYPE)
 
-			setting.update(
-				{
-					"enable_shopify": 1,
-					"shopify_url": "frappetest.myshopify.com",
-					"password": "supersecret",
-					"shared_secret": "supersecret",
-					"default_customer": "_Test Customer",
-					"customer_group": "_Test Customer Group 1",
-					"company": "_Test Company",
-					"cost_center": get_default_cost_center("_Test Company"),
-					"cash_bank_account": "_Test Bank - _TC",
-					"price_list": "_Test Price List",
-					"warehouse": "_Test Warehouse - _TC",
-					"sales_order_series": "SAL-ORD-.YYYY.-",
-					"sync_delivery_note": 1,
-					"delivery_note_series": "MAT-DN-.YYYY.-",
-					"sync_sales_invoice": 1,
-					"sales_invoice_series": "SINV-.YY.-",
-					"upload_erpnext_items": 1,
-					"update_shopify_item_on_update": 1,
-					"update_erpnext_stock_levels_to_shopify": 1,
-					"doctype": "Shopify Setting",
-					"shopify_warehouse_mapping": [
-						{
-							"shopify_location_id": "62279942297",
-							"shopify_location_name": "WH 1",
-							"erpnext_warehouse": "_Test Warehouse 1 - _TC",
-						},
-						{
-							"shopify_location_id": "61724295321",
-							"shopify_location_name": "WH 2",
-							"erpnext_warehouse": "_Test Warehouse 2 - _TC",
-						},
-					],
-				}
-			).save(ignore_permissions=True)
+		setting.update(
+			{
+				"enable_shopify": 1,
+				"shopify_url": "frappetest.myshopify.com",
+				"api_key": "test_api_key",
+				"client_secret": "supersecret",
+				"access_token": "supersecret",
+				"authorization_status": "Connected",
+				"default_customer": "_Test Customer",
+				"customer_group": "_Test Customer Group 1",
+				"company": "_Test Company",
+				"cost_center": get_default_cost_center("_Test Company"),
+				"cash_bank_account": "_Test Bank - _TC",
+				"price_list": "_Test Price List",
+				"warehouse": "_Test Warehouse - _TC",
+				"sales_order_series": "SAL-ORD-.YYYY.-",
+				"sync_delivery_note": 1,
+				"delivery_note_series": "MAT-DN-.YYYY.-",
+				"sync_sales_invoice": 1,
+				"sales_invoice_series": "SINV-.YY.-",
+				"upload_erpnext_items": 1,
+				"update_shopify_item_on_update": 1,
+				"update_erpnext_stock_levels_to_shopify": 1,
+				"doctype": "Shopify Setting",
+				"shopify_warehouse_mapping": [
+					{
+						"shopify_location_id": "62279942297",
+						"shopify_location_name": "WH 1",
+						"erpnext_warehouse": "_Test Warehouse 1 - _TC",
+					},
+					{
+						"shopify_location_id": "61724295321",
+						"shopify_location_name": "WH 2",
+						"erpnext_warehouse": "_Test Warehouse 2 - _TC",
+					},
+				],
+			}
+		).save(ignore_permissions=True)
 
 	def setUp(self):
 		ActiveResource.site = None

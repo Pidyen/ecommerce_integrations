@@ -6,7 +6,22 @@ MODULE_NAME = "shopify"
 SETTING_DOCTYPE = "Shopify Setting"
 OLD_SETTINGS_DOCTYPE = "Shopify Settings"
 
-API_VERSION = "2024-01"
+API_VERSION = "2026-01"
+
+OAUTH_SCOPES = [
+	"read_products",
+	"write_products",
+	"read_orders",
+	"write_orders",
+	"read_customers",
+	"write_customers",
+	"read_inventory",
+	"write_inventory",
+	"read_fulfillments",
+	"write_fulfillments",
+	"read_locations",
+	"read_all_orders",
+]
 
 WEBHOOK_EVENTS = [
 	"orders/create",

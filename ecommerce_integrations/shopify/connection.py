@@ -12,6 +12,7 @@ from shopify.session import Session
 from ecommerce_integrations.shopify.constants import (
 	API_VERSION,
 	EVENT_MAPPER,
+	OAUTH_SCOPES,
 	SETTING_DOCTYPE,
 	WEBHOOK_EVENTS,
 )
@@ -29,7 +30,7 @@ def temp_shopify_session(func):
 
 		setting = frappe.get_doc(SETTING_DOCTYPE)
 		if setting.is_enabled():
-			auth_details = (setting.shopify_url, API_VERSION, setting.get_password("password"))
+			auth_details = (setting.shopify_url, API_VERSION, setting.get_password("access_token"))
 
 			with Session.temp(*auth_details):
 				return func(*args, **kwargs)
@@ -37,14 +38,14 @@ def temp_shopify_session(func):
 	return wrapper
 
 
-def register_webhooks(shopify_url: str, password: str) -> list[Webhook]:
+def register_webhooks(shopify_url: str, access_token: str) -> list[Webhook]:
 	"""Register required webhooks with shopify and return registered webhooks."""
 	new_webhooks = []
 
 	# clear all stale webhooks matching current site url before registering new ones
-	unregister_webhooks(shopify_url, password)
+	unregister_webhooks(shopify_url, access_token)
 
-	with Session.temp(shopify_url, API_VERSION, password):
+	with Session.temp(shopify_url, API_VERSION, access_token):
 		for topic in WEBHOOK_EVENTS:
 			webhook = Webhook.create({"topic": topic, "address": get_callback_url(), "format": "json"})
 
@@ -60,11 +61,11 @@ def register_webhooks(shopify_url: str, password: str) -> list[Webhook]:
 	return new_webhooks
 
 
-def unregister_webhooks(shopify_url: str, password: str) -> None:
+def unregister_webhooks(shopify_url: str, access_token: str) -> None:
 	"""Unregister all webhooks from shopify that correspond to current site url."""
 	url = get_current_domain_name()
 
-	with Session.temp(shopify_url, API_VERSION, password):
+	with Session.temp(shopify_url, API_VERSION, access_token):
 		for webhook in Webhook.find():
 			if url in webhook.address:
 				webhook.destroy()
@@ -89,6 +90,73 @@ def get_callback_url() -> str:
 	url = get_current_domain_name()
 
 	return f"https://{url}/api/method/ecommerce_integrations.shopify.connection.store_request_data"
+
+
+def get_oauth_redirect_uri() -> str:
+	"""Build the OAuth redirect URI pointing back to this site."""
+	url = get_current_domain_name()
+	return f"https://{url}/api/method/ecommerce_integrations.shopify.connection.oauth_callback"
+
+
+@frappe.whitelist()
+def initiate_oauth():
+	"""Start OAuth flow by redirecting user to Shopify authorization page."""
+	setting = frappe.get_doc(SETTING_DOCTYPE)
+
+	if not setting.shopify_url or not setting.api_key:
+		frappe.throw(_("Shop URL and API Key are required to start OAuth."))
+
+	api_key = setting.api_key
+	client_secret = setting.get_password("client_secret")
+
+	if not client_secret:
+		frappe.throw(_("Client Secret is required to start OAuth."))
+
+	Session.setup(api_key=api_key, secret=client_secret)
+
+	shopify_url = setting.shopify_url.rstrip("/")
+	session = Session(f"https://{shopify_url}", API_VERSION)
+
+	redirect_uri = get_oauth_redirect_uri()
+	permission_url = session.create_permission_url(OAUTH_SCOPES, redirect_uri)
+
+	frappe.response["type"] = "redirect"
+	frappe.response["location"] = permission_url
+
+
+@frappe.whitelist(allow_guest=True)
+def oauth_callback():
+	"""Handle OAuth callback from Shopify after merchant approves the app."""
+	params = frappe.request.args
+
+	setting = frappe.get_doc(SETTING_DOCTYPE)
+
+	Session.setup(api_key=setting.api_key, secret=setting.get_password("client_secret"))
+
+	shopify_url = setting.shopify_url.rstrip("/")
+	session = Session(f"https://{shopify_url}", API_VERSION)
+
+	# request_token validates HMAC and exchanges the authorization code for a permanent offline token
+	access_token = session.request_token(params)
+
+	# Save the token
+	setting.access_token = access_token
+	setting.authorization_status = "Connected"
+	setting.flags.ignore_validate = True
+	setting.save(ignore_permissions=True)
+
+	# Register webhooks now that we have a valid token
+	new_webhooks = register_webhooks(shopify_url, access_token)
+	if new_webhooks:
+		for webhook in new_webhooks:
+			setting.append("webhooks", {"webhook_id": webhook.id, "method": webhook.topic})
+		setting.flags.ignore_validate = True
+		setting.save(ignore_permissions=True)
+
+	frappe.db.commit()
+
+	frappe.response["type"] = "redirect"
+	frappe.response["location"] = "/app/shopify-setting"
 
 
 @frappe.whitelist(allow_guest=True)
@@ -120,7 +188,7 @@ def process_request(data, event):
 
 def _validate_request(req, hmac_header):
 	settings = frappe.get_doc(SETTING_DOCTYPE)
-	secret_key = settings.shared_secret
+	secret_key = settings.get_password("client_secret")
 
 	sig = base64.b64encode(hmac.new(secret_key.encode("utf8"), req.data, hashlib.sha256).digest())
 
