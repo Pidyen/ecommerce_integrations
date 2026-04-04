@@ -16,6 +16,8 @@ class EcommerceCustomer:
 
 	def get_customer_doc(self):
 		"""Get ERPNext customer document."""
+		if hasattr(self, "_customer_doc") and self._customer_doc:
+			return self._customer_doc
 		if self.is_synced():
 			return frappe.get_last_doc("Customer", {self.customer_id_field: self.customer_id})
 		else:
@@ -37,6 +39,7 @@ class EcommerceCustomer:
 
 		customer.flags.ignore_mandatory = True
 		customer.insert(ignore_permissions=True)
+		self._customer_doc = customer
 
 	def get_customer_address_doc(self, address_type: str):
 		try:
