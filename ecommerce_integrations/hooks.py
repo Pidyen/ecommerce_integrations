@@ -37,6 +37,7 @@ doctype_js = {
 	"Sales Order": [
 		"public/js/unicommerce/sales_order.js",
 		"public/js/common/ecommerce_transactions.js",
+		"public/js/shopify/sales_order.js",
 	],
 	"Sales Invoice": [
 		"public/js/unicommerce/sales_invoice.js",

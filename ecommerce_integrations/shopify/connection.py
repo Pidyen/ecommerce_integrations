@@ -62,13 +62,11 @@ def register_webhooks(shopify_url: str, access_token: str) -> list[Webhook]:
 
 
 def unregister_webhooks(shopify_url: str, access_token: str) -> None:
-	"""Unregister all webhooks from shopify that correspond to current site url."""
-	url = get_current_domain_name()
+	"""Unregister ALL webhooks from shopify store to avoid conflicts with other sites."""
 
 	with Session.temp(shopify_url, API_VERSION, access_token):
 		for webhook in Webhook.find():
-			if url in webhook.address:
-				webhook.destroy()
+			webhook.destroy()
 
 
 def get_current_domain_name() -> str:
@@ -161,15 +159,73 @@ def oauth_callback():
 
 @frappe.whitelist(allow_guest=True)
 def store_request_data() -> None:
-	if frappe.request:
+	frappe.logger("shopify_webhook").info("=== Shopify Webhook Received ===")
+
+	if not frappe.request:
+		frappe.logger("shopify_webhook").error("No request object found")
+		create_shopify_log(
+			status="Error",
+			method="store_request_data",
+			message="No request object found - webhook called without HTTP request",
+		)
+		return
+
+	try:
+		# Log raw request details
+		event = frappe.request.headers.get("X-Shopify-Topic", "Unknown")
 		hmac_header = frappe.get_request_header("X-Shopify-Hmac-Sha256")
+		shop_domain = frappe.request.headers.get("X-Shopify-Shop-Domain", "Unknown")
+		raw_data = frappe.request.data
 
+		frappe.logger("shopify_webhook").info(
+			f"Event: {event} | Shop: {shop_domain} | "
+			f"HMAC Present: {bool(hmac_header)} | "
+			f"Payload Size: {len(raw_data)} bytes"
+		)
+
+		# Validate HMAC
 		_validate_request(frappe.request, hmac_header)
+		frappe.logger("shopify_webhook").info(f"HMAC validation passed for event: {event}")
 
-		data = json.loads(frappe.request.data)
-		event = frappe.request.headers.get("X-Shopify-Topic")
+		data = json.loads(raw_data)
+
+		# Log key identifiers from payload
+		order_id = data.get("id", "N/A")
+		order_number = data.get("order_number", "N/A")
+		frappe.logger("shopify_webhook").info(
+			f"Processing - Order ID: {order_id} | Order Number: {order_number} | Event: {event}"
+		)
 
 		process_request(data, event)
+		frappe.logger("shopify_webhook").info(f"Successfully enqueued event: {event} for Order ID: {order_id}")
+
+	except json.JSONDecodeError as e:
+		frappe.logger("shopify_webhook").error(f"Invalid JSON payload: {e}")
+		create_shopify_log(
+			status="Error",
+			method="store_request_data",
+			message=f"Invalid JSON in webhook payload: {e}",
+			request_data=frappe.request.data.decode("utf-8", errors="replace")[:10000],
+		)
+
+	except KeyError as e:
+		frappe.logger("shopify_webhook").error(f"Unknown event type: {event} | Error: {e}")
+		create_shopify_log(
+			status="Error",
+			method="store_request_data",
+			message=f"Unknown or unmapped webhook event: {event}",
+			request_data=json.loads(raw_data) if raw_data else None,
+		)
+
+	except Exception as e:
+		frappe.logger("shopify_webhook").error(f"Webhook processing failed: {e}", exc_info=True)
+		create_shopify_log(
+			status="Error",
+			method="store_request_data",
+			message=f"Webhook processing error: {e}",
+			request_data=json.loads(raw_data) if raw_data else None,
+			exception=frappe.get_traceback(),
+		)
 
 
 def process_request(data, event):

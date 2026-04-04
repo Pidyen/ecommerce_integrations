@@ -60,7 +60,8 @@
   "old_orders_from",
   "old_orders_to",
   "is_old_data_migrated",
-  "last_inventory_sync"
+  "last_inventory_sync",
+  "shopify_metafield_definitions"
  ],
  "fields": [
   {
@@ -403,6 +404,14 @@
    "fieldtype": "Link",
    "label": "Default Shipping Charges Account",
    "options": "Account"
+  },
+  {
+   "fieldname": "shopify_metafield_definitions",
+   "fieldtype": "Code",
+   "hidden": 1,
+   "label": "Shopify Metafield Definitions",
+   "options": "JSON",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,

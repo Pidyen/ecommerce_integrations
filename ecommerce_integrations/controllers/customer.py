@@ -59,7 +59,7 @@ class EcommerceCustomer:
 				**address,
 				"links": [{"link_doctype": "Customer", "link_name": customer_doc.name}],
 			}
-		).insert(ignore_mandatory=True)
+		).insert(ignore_mandatory=True, ignore_permissions=True)
 
 	def create_customer_contact(self, contact: dict[str, str]) -> None:
 		"""Create contact from dictionary containing fields used in Address doctype of ERPNext."""
@@ -72,4 +72,4 @@ class EcommerceCustomer:
 				**contact,
 				"links": [{"link_doctype": "Customer", "link_name": customer_doc.name}],
 			}
-		).insert(ignore_mandatory=True)
+		).insert(ignore_mandatory=True, ignore_permissions=True)

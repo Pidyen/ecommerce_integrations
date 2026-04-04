@@ -77,7 +77,51 @@ frappe.ui.form.on("Shopify Setting", {
 			);
 		}
 
-		frm.add_custom_button(__("Import Products"), function () {
+		// Fetch All Webhooks button
+	if (frm.doc.enable_shopify && frm.doc.access_token) {
+		frm.add_custom_button(
+			__("Fetch All Webhooks"),
+			function () {
+				frappe.call({
+					doc: frm.doc,
+					method: "fetch_all_webhooks",
+					freeze: true,
+					freeze_message: __("Fetching webhooks from Shopify..."),
+					callback: (r) => {
+						if (r.message) {
+							show_webhooks_dialog(r.message);
+						}
+					},
+				});
+			},
+			__("Shopify")
+		);
+	}
+
+	// Sync Customer Metafield Definitions button
+	if (frm.doc.enable_shopify && frm.doc.access_token) {
+		frm.add_custom_button(
+			__("Sync Customer Metafields"),
+			function () {
+				frappe.call({
+					doc: frm.doc,
+					method: "fetch_customer_metafields",
+					freeze: true,
+					freeze_message: __(
+						"Fetching metafield definitions from Shopify..."
+					),
+					callback: (r) => {
+						if (r.message && r.message.length) {
+							show_metafields_dialog(r.message);
+						}
+					},
+				});
+			},
+			__("Shopify")
+		);
+	}
+
+	frm.add_custom_button(__("Import Products"), function () {
 			frappe.set_route("shopify-import-products");
 		});
 		frm.add_custom_button(__("View Logs"), () => {
@@ -148,3 +192,88 @@ frappe.ui.form.on("Shopify Setting", {
 		frm.set_query("default_shipping_charges_account", tax_query);
 	},
 });
+
+function show_webhooks_dialog(data) {
+	let html = `<div style="margin-bottom:10px;">
+		<strong>${__("Current Site")}:</strong> <code>${data.current_site}</code><br>
+		<strong>${__("Total Webhooks on Shopify")}:</strong> ${data.total_webhooks}
+	</div>`;
+
+	if (!data.webhooks.length) {
+		html += `<div class="text-muted">${__("No webhooks found on Shopify store.")}</div>`;
+	} else {
+		html += `<table class="table table-bordered table-sm" style="font-size:12px;">
+			<thead><tr>
+				<th>${__("Topic")}</th>
+				<th>${__("Callback URL")}</th>
+				<th>${__("This Site?")}</th>
+				<th>${__("Webhook ID")}</th>
+				<th>${__("Created")}</th>
+			</tr></thead><tbody>`;
+
+		data.webhooks.forEach((wh) => {
+			const is_current = wh.address.includes(data.current_site);
+			const badge = is_current
+				? `<span class="badge badge-success" style="background:green;color:white;">Yes</span>`
+				: `<span class="badge badge-danger" style="background:red;color:white;">No - Other Site</span>`;
+
+			html += `<tr style="${!is_current ? 'background:#fff3cd;' : ''}">
+				<td><strong>${wh.topic}</strong></td>
+				<td style="word-break:break-all;">${wh.address}</td>
+				<td>${badge}</td>
+				<td>${wh.id}</td>
+				<td>${wh.created_at || ""}</td>
+			</tr>`;
+		});
+
+		html += `</tbody></table>`;
+
+		// Summary
+		const other_site_hooks = data.webhooks.filter(
+			(wh) => !wh.address.includes(data.current_site)
+		);
+		if (other_site_hooks.length) {
+			html += `<div class="alert alert-warning" style="margin-top:10px;">
+				<strong>${__("Conflict Detected!")}</strong> ${other_site_hooks.length}
+				${__("webhook(s) pointing to other site(s). This may cause issues.")}
+			</div>`;
+		}
+	}
+
+	let d = new frappe.ui.Dialog({
+		title: __("Shopify Webhooks ({0})", [data.total_webhooks]),
+		size: "extra-large",
+	});
+
+	d.$body.html(html);
+	d.show();
+}
+
+function show_metafields_dialog(fields) {
+	let html = `<table class="table table-bordered table-sm" style="font-size:12px;">
+		<thead><tr>
+			<th>${__("Label")}</th>
+			<th>${__("Namespace")}</th>
+			<th>${__("Key")}</th>
+			<th>${__("Shopify Type")}</th>
+		</tr></thead><tbody>`;
+
+	fields.forEach((f) => {
+		html += `<tr>
+			<td><strong>${f.label}</strong></td>
+			<td><code>${f.namespace}</code></td>
+			<td><code>${f.key}</code></td>
+			<td>${f.type || ""}</td>
+		</tr>`;
+	});
+
+	html += `</tbody></table>`;
+
+	let d = new frappe.ui.Dialog({
+		title: __("Shopify Metafield Definitions ({0})", [fields.length]),
+		size: "large",
+	});
+
+	d.$body.html(html);
+	d.show();
+}
