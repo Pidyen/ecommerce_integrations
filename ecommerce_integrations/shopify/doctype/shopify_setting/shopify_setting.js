@@ -121,6 +121,25 @@ frappe.ui.form.on("Shopify Setting", {
 		);
 	}
 
+	// Setup Custom Fields button
+	frm.add_custom_button(
+		__("Setup Custom Fields"),
+		function () {
+			frappe.call({
+				doc: frm.doc,
+				method: "setup_custom_fields_manual",
+				freeze: true,
+				freeze_message: __("Creating custom fields..."),
+				callback: (r) => {
+					if (!r.exc) {
+						frm.reload_doc();
+					}
+				},
+			});
+		},
+		__("Shopify")
+	);
+
 	frm.add_custom_button(__("Import Products"), function () {
 			frappe.set_route("shopify-import-products");
 		});

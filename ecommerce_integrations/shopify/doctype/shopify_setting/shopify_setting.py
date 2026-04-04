@@ -247,6 +247,12 @@ class ShopifySetting(SettingController):
 		)
 		return list(label_map.values())
 
+	@frappe.whitelist()
+	def setup_custom_fields_manual(self):
+		"""Manually create all required custom fields for Shopify integration."""
+		setup_custom_fields()
+		frappe.msgprint(_("Custom fields created successfully."))
+
 	def get_erpnext_warehouses(self) -> list[ERPNextWarehouse]:
 		return [wh_map.erpnext_warehouse for wh_map in self.shopify_warehouse_mapping]
 
