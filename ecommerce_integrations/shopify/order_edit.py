@@ -6,8 +6,11 @@ erpnext.controllers.accounts_controller.update_child_qty_rate, which writes chil
 rows to the DB *before* the parent doc is saved. By the time the parent's
 on_update_after_submit fires, doc.get_doc_before_save() already reflects the new
 rows, so a parent-only diff is always empty. So we listen to Sales Order Item
-events directly (after_insert / on_update / on_trash), accumulate the deltas in
-frappe.flags, and replay them when the parent finishes saving.
+events directly (after_insert / on_update_after_submit / on_trash), accumulate
+the deltas in frappe.flags, and replay them when the parent finishes saving.
+
+Note on event choice: submitted child docs' run_post_save_methods only fires
+on_update_after_submit (not on_update), so qty edits must be hooked there.
 
 Flow:
 - Sales Order Item events accumulate adds / qty changes / removals per parent
@@ -79,7 +82,7 @@ def track_so_item_added(doc, method=None):
 
 
 def track_so_item_changed(doc, method=None):
-	"""Sales Order Item on_update hook -- record qty changes on submitted SOs."""
+	"""Sales Order Item on_update_after_submit hook -- record qty changes on submitted SOs."""
 	if frappe.flags.shopify_syncing_order:
 		return
 	if doc.parenttype != "Sales Order":
