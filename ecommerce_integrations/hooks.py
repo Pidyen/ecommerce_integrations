@@ -125,7 +125,7 @@ doc_events = {
 	},
 	"Sales Order Item": {
 		"after_insert": "ecommerce_integrations.shopify.order_edit.track_so_item_added",
-		"on_update": "ecommerce_integrations.shopify.order_edit.track_so_item_changed",
+		"on_update_after_submit": "ecommerce_integrations.shopify.order_edit.track_so_item_changed",
 		"on_trash": "ecommerce_integrations.shopify.order_edit.track_so_item_removed",
 	},
 	"Stock Entry": {
