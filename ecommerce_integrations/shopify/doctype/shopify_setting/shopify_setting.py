@@ -25,6 +25,8 @@ from ecommerce_integrations.shopify.constants import (
 	ORDER_ITEM_DISCOUNT_FIELD,
 	ORDER_NUMBER_FIELD,
 	ORDER_STATUS_FIELD,
+	SHOPIFY_LINE_ITEM_ID_FIELD,
+	SHOPIFY_VARIANT_ID_FIELD,
 	SUPPLIER_ID_FIELD,
 )
 from ecommerce_integrations.shopify.utils import (
@@ -398,6 +400,22 @@ def setup_custom_fields():
 				fieldtype="Float",
 				insert_after="discount_and_margin",
 				read_only=1,
+			),
+			dict(
+				fieldname=SHOPIFY_LINE_ITEM_ID_FIELD,
+				label="Shopify Line Item Id",
+				fieldtype="Data",
+				insert_after=ORDER_ITEM_DISCOUNT_FIELD,
+				read_only=1,
+				print_hide=1,
+			),
+			dict(
+				fieldname=SHOPIFY_VARIANT_ID_FIELD,
+				label="Shopify Variant Id",
+				fieldtype="Data",
+				insert_after=SHOPIFY_LINE_ITEM_ID_FIELD,
+				read_only=1,
+				print_hide=1,
 			),
 		],
 		"Delivery Note": [

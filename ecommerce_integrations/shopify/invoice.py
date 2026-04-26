@@ -31,30 +31,67 @@ def prepare_sales_invoice(payload, request_id=None):
 
 
 def create_sales_invoice(shopify_order, setting, so):
-	if (
-		not frappe.db.get_value("Sales Invoice", {ORDER_ID_FIELD: shopify_order.get("id")}, "name")
-		and so.docstatus == 1
-		and not so.per_billed
-		and cint(setting.sync_sales_invoice)
+	if not cint(setting.sync_sales_invoice):
+		return
+	if so.docstatus != 1 or so.per_billed:
+		return
+
+	if cint(setting.get("create_payment_entry_against_so")):
+		_create_payment_entry_against_sales_order(shopify_order, setting, so)
+		return
+
+	if frappe.db.get_value("Sales Invoice", {ORDER_ID_FIELD: shopify_order.get("id")}, "name"):
+		return
+
+	posting_date = getdate(shopify_order.get("created_at")) or nowdate()
+
+	sales_invoice = make_sales_invoice(so.name, ignore_permissions=True)
+	sales_invoice.set(ORDER_ID_FIELD, str(shopify_order.get("id")))
+	sales_invoice.set(ORDER_NUMBER_FIELD, shopify_order.get("name"))
+	sales_invoice.set_posting_time = 1
+	sales_invoice.posting_date = posting_date
+	sales_invoice.due_date = posting_date
+	sales_invoice.naming_series = setting.sales_invoice_series or "SI-Shopify-"
+	sales_invoice.flags.ignore_mandatory = True
+	set_cost_center(sales_invoice.items, setting.cost_center)
+	sales_invoice.insert(ignore_mandatory=True)
+	sales_invoice.submit()
+	if sales_invoice.grand_total > 0:
+		make_payament_entry_against_sales_invoice(sales_invoice, setting, posting_date)
+
+	if shopify_order.get("note"):
+		sales_invoice.add_comment(text=f"Order Note: {shopify_order.get('note')}")
+
+
+def _create_payment_entry_against_sales_order(shopify_order, setting, so):
+	"""Skip Sales Invoice creation and book a Payment Entry directly against the SO.
+
+	Idempotent: returns early if SO is already fully advance-paid or if a Payment
+	Entry referencing this Shopify order id already exists.
+	"""
+	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+	shopify_order_id = str(shopify_order.get("id"))
+	if so.advance_paid and so.advance_paid >= so.grand_total:
+		return
+	if frappe.db.exists(
+		"Payment Entry",
+		{"reference_no": shopify_order_id, "docstatus": 1},
 	):
-		posting_date = getdate(shopify_order.get("created_at")) or nowdate()
+		return
 
-		sales_invoice = make_sales_invoice(so.name, ignore_permissions=True)
-		sales_invoice.set(ORDER_ID_FIELD, str(shopify_order.get("id")))
-		sales_invoice.set(ORDER_NUMBER_FIELD, shopify_order.get("name"))
-		sales_invoice.set_posting_time = 1
-		sales_invoice.posting_date = posting_date
-		sales_invoice.due_date = posting_date
-		sales_invoice.naming_series = setting.sales_invoice_series or "SI-Shopify-"
-		sales_invoice.flags.ignore_mandatory = True
-		set_cost_center(sales_invoice.items, setting.cost_center)
-		sales_invoice.insert(ignore_mandatory=True)
-		sales_invoice.submit()
-		if sales_invoice.grand_total > 0:
-			make_payament_entry_against_sales_invoice(sales_invoice, setting, posting_date)
+	posting_date = getdate(shopify_order.get("created_at")) or nowdate()
 
-		if shopify_order.get("note"):
-			sales_invoice.add_comment(text=f"Order Note: {shopify_order.get('note')}")
+	payment_entry = get_payment_entry("Sales Order", so.name, bank_account=setting.cash_bank_account)
+	payment_entry.flags.ignore_mandatory = True
+	payment_entry.reference_no = shopify_order_id
+	payment_entry.reference_date = posting_date
+	payment_entry.posting_date = posting_date
+	payment_entry.insert(ignore_permissions=True)
+	payment_entry.submit()
+
+	if shopify_order.get("note"):
+		so.add_comment(text=f"Order Note: {shopify_order.get('note')}")
 
 
 def set_cost_center(items, cost_center):

@@ -117,8 +117,16 @@ doc_events = {
 		],
 	},
 	"Sales Order": {
-		"on_update_after_submit": "ecommerce_integrations.unicommerce.order.update_shipping_info",
+		"on_update_after_submit": [
+			"ecommerce_integrations.unicommerce.order.update_shipping_info",
+			"ecommerce_integrations.shopify.order_edit.sync_so_changes_to_shopify",
+		],
 		"on_cancel": "ecommerce_integrations.unicommerce.status_updater.ignore_pick_list_on_sales_order_cancel",
+	},
+	"Sales Order Item": {
+		"after_insert": "ecommerce_integrations.shopify.order_edit.track_so_item_added",
+		"on_update": "ecommerce_integrations.shopify.order_edit.track_so_item_changed",
+		"on_trash": "ecommerce_integrations.shopify.order_edit.track_so_item_removed",
 	},
 	"Stock Entry": {
 		"validate": "ecommerce_integrations.unicommerce.grn.validate_stock_entry_for_grn",

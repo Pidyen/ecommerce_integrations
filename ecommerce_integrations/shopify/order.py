@@ -16,6 +16,8 @@ from ecommerce_integrations.shopify.constants import (
 	ORDER_NUMBER_FIELD,
 	ORDER_STATUS_FIELD,
 	SETTING_DOCTYPE,
+	SHOPIFY_LINE_ITEM_ID_FIELD,
+	SHOPIFY_VARIANT_ID_FIELD,
 )
 from ecommerce_integrations.shopify.customer import ShopifyCustomer
 from ecommerce_integrations.shopify.product import create_items_if_not_exist, get_item_code
@@ -33,6 +35,7 @@ def sync_sales_order(payload, request_id=None):
 	order = payload
 	frappe.set_user("Administrator")
 	frappe.flags.request_id = request_id
+	frappe.flags.shopify_syncing_order = True
 
 	if frappe.db.get_value("Sales Order", filters={ORDER_ID_FIELD: cstr(order["id"])}):
 		create_shopify_log(status="Invalid", message="Sales order already exists, not synced")
@@ -163,6 +166,8 @@ def get_order_items(order_items, setting, delivery_date, taxes_inclusive):
 					ORDER_ITEM_DISCOUNT_FIELD: (
 						_get_total_discount(shopify_item) / cint(shopify_item.get("quantity"))
 					),
+					SHOPIFY_LINE_ITEM_ID_FIELD: cstr(shopify_item.get("id") or ""),
+					SHOPIFY_VARIANT_ID_FIELD: cstr(shopify_item.get("variant_id") or ""),
 				}
 			)
 		else:

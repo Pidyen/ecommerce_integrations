@@ -13,6 +13,7 @@ OAUTH_SCOPES = [
 	"write_products",
 	"read_orders",
 	"write_orders",
+	"write_order_edits",
 	"read_customers",
 	"write_customers",
 	"read_inventory",
@@ -21,14 +22,14 @@ OAUTH_SCOPES = [
 	"write_fulfillments",
 	"read_locations",
 	"read_all_orders",
+	"read_returns",
+	"write_returns",
 ]
 
 WEBHOOK_EVENTS = [
 	"orders/create",
 	"orders/paid",
-	"orders/fulfilled",
 	"orders/cancelled",
-	"orders/partially_fulfilled",
 	"customers/create",
 	"customers/update",
 ]
@@ -36,9 +37,7 @@ WEBHOOK_EVENTS = [
 EVENT_MAPPER = {
 	"orders/create": "ecommerce_integrations.shopify.order.sync_sales_order",
 	"orders/paid": "ecommerce_integrations.shopify.invoice.prepare_sales_invoice",
-	"orders/fulfilled": "ecommerce_integrations.shopify.fulfillment.prepare_delivery_note",
 	"orders/cancelled": "ecommerce_integrations.shopify.order.cancel_order",
-	"orders/partially_fulfilled": "ecommerce_integrations.shopify.fulfillment.prepare_delivery_note",
 	"customers/create": "ecommerce_integrations.shopify.customer.sync_customer_from_webhook",
 	"customers/update": "ecommerce_integrations.shopify.customer.update_customer_from_webhook",
 }
@@ -56,6 +55,8 @@ SUPPLIER_ID_FIELD = "shopify_supplier_id"
 ADDRESS_ID_FIELD = "shopify_address_id"
 ORDER_ITEM_DISCOUNT_FIELD = "shopify_item_discount"
 ITEM_SELLING_RATE_FIELD = "shopify_selling_rate"
+SHOPIFY_LINE_ITEM_ID_FIELD = "shopify_line_item_id"
+SHOPIFY_VARIANT_ID_FIELD = "shopify_variant_id"
 
 # ERPNext already defines the default UOMs from Shopify but names are different
 WEIGHT_TO_ERPNEXT_UOM_MAP = {"kg": "Kg", "g": "Gram", "oz": "Ounce", "lb": "Pound"}
