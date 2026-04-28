@@ -1,6 +1,7 @@
 frappe.ui.form.on("Sales Order", {
 	refresh: function (frm) {
 		render_medical_info(frm);
+		render_shopify_order_action_buttons(frm);
 	},
 	customer: function (frm) {
 		render_medical_info(frm);
@@ -74,6 +75,62 @@ function render_medical_info(frm) {
 				</div>`;
 
 			wrapper.$wrapper.html(html);
+		},
+	});
+}
+
+function render_shopify_order_action_buttons(frm) {
+	if (frm.doc.docstatus !== 1 || !frm.doc.shopify_order_id) return;
+
+	frappe.call({
+		method: "ecommerce_integrations.shopify.order_edit.get_shopify_order_action_state",
+		args: { sales_order: frm.doc.name },
+		callback: function (r) {
+			const state = r.message || {};
+
+			if (state.show_refund) {
+				frm.add_custom_button(__("Trigger Shopify Refund"), function () {
+					frappe.confirm(
+						__(
+							"This will create a Shopify refund for current refundable quantities. Continue?"
+						),
+						function () {
+							frappe.call({
+								method: "ecommerce_integrations.shopify.order_edit.trigger_shopify_refund",
+								args: { sales_order: frm.doc.name },
+								callback: function () {
+									frappe.show_alert({
+										message: __("Shopify refund triggered."),
+										indicator: "green",
+									});
+									frm.reload_doc();
+								},
+							});
+						}
+					);
+				});
+			}
+
+			if (state.show_resend_invoice) {
+				frm.add_custom_button(__("Resend Shopify Invoice"), function () {
+					frappe.confirm(
+						__("Resend Shopify invoice for this order?"),
+						function () {
+							frappe.call({
+								method: "ecommerce_integrations.shopify.order_edit.trigger_shopify_resend_invoice",
+								args: { sales_order: frm.doc.name },
+								callback: function () {
+									frappe.show_alert({
+										message: __("Shopify invoice resend triggered."),
+										indicator: "green",
+									});
+									frm.reload_doc();
+								},
+							});
+						}
+					);
+				});
+			}
 		},
 	});
 }

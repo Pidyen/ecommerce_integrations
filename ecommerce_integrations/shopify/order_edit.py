@@ -614,3 +614,235 @@ def _check_user_errors(resp, mutation_name):
 	errors = payload.get("userErrors") or []
 	if errors:
 		raise Exception(f"{mutation_name} userErrors: {json.dumps(errors)}")
+
+
+@frappe.whitelist()
+def get_shopify_order_action_state(sales_order):
+	"""Return which Shopify action buttons should be shown for this Sales Order."""
+	so = frappe.get_doc("Sales Order", sales_order)
+	so.check_permission("read")
+
+	if so.docstatus != 1:
+		return {"show_refund": False, "show_resend_invoice": False, "reason": "SO not submitted"}
+
+	order_id = so.get(ORDER_ID_FIELD)
+	if not order_id:
+		return {"show_refund": False, "show_resend_invoice": False, "reason": "No Shopify order id"}
+
+	setting = frappe.get_cached_doc(SETTING_DOCTYPE)
+	if not setting.is_enabled():
+		return {"show_refund": False, "show_resend_invoice": False, "reason": "Shopify disabled"}
+
+	order_data = _get_order_action_facts(_to_order_gid(order_id), setting)
+	refundable_qty = cint(order_data.get("refundable_qty"))
+	outstanding_amount = flt(order_data.get("outstanding_amount"))
+	show_resend_invoice = outstanding_amount > 0
+	# Keep actions mutually exclusive in UI:
+	# if customer owes money, prioritize resend invoice; otherwise show refund.
+	show_refund = not show_resend_invoice and refundable_qty > 0
+
+	return {
+		"show_refund": show_refund,
+		"show_resend_invoice": show_resend_invoice,
+		"refundable_qty": refundable_qty,
+		"outstanding_amount": outstanding_amount,
+		"currency": order_data.get("currency"),
+		"display_financial_status": order_data.get("display_financial_status"),
+	}
+
+
+@frappe.whitelist()
+def trigger_shopify_resend_invoice(sales_order):
+	"""Trigger Shopify order invoice resend for the linked Sales Order."""
+	so = frappe.get_doc("Sales Order", sales_order)
+	so.check_permission("submit")
+
+	if so.docstatus != 1:
+		frappe.throw(_("Only submitted Sales Orders are supported."))
+
+	order_id = so.get(ORDER_ID_FIELD)
+	if not order_id:
+		frappe.throw(_("Sales Order is not linked with a Shopify order."))
+
+	setting = frappe.get_cached_doc(SETTING_DOCTYPE)
+	if not setting.is_enabled():
+		frappe.throw(_("Shopify integration is disabled."))
+
+	order_gid = _to_order_gid(order_id)
+	order_data = _get_order_action_facts(order_gid, setting)
+	if flt(order_data.get("outstanding_amount")) <= 0:
+		frappe.throw(_("This Shopify order has no outstanding amount to invoice."))
+
+	resp = _graphql(
+		setting,
+		"""
+		mutation orderInvoiceSend($id: ID!) {
+			orderInvoiceSend(id: $id) {
+				order {
+					id
+				}
+				userErrors {
+					field
+					message
+				}
+			}
+		}
+		""",
+		{"id": order_gid},
+	)
+	_check_user_errors(resp, "orderInvoiceSend")
+
+	create_shopify_log(
+		status="Success",
+		method="shopify.order_edit.trigger_shopify_resend_invoice",
+		message=f"Invoice resend triggered from SO {so.name} for Shopify order {order_id}",
+		request_data={"sales_order": so.name, "shopify_order_id": order_id},
+		make_new=True,
+	)
+	return {"ok": True}
+
+
+@frappe.whitelist()
+def trigger_shopify_refund(sales_order):
+	"""Trigger a full refundable Shopify refund for the linked Sales Order."""
+	so = frappe.get_doc("Sales Order", sales_order)
+	so.check_permission("submit")
+
+	if so.docstatus != 1:
+		frappe.throw(_("Only submitted Sales Orders are supported."))
+
+	order_id = so.get(ORDER_ID_FIELD)
+	if not order_id:
+		frappe.throw(_("Sales Order is not linked with a Shopify order."))
+
+	setting = frappe.get_cached_doc(SETTING_DOCTYPE)
+	if not setting.is_enabled():
+		frappe.throw(_("Shopify integration is disabled."))
+
+	order_gid = _to_order_gid(order_id)
+	refundable_lines = _get_refundable_lines(order_gid, setting)
+	if not refundable_lines:
+		frappe.throw(_("No refundable quantity found on Shopify order."))
+
+	location_id = _get_default_shopify_location_id(setting)
+	restock_type = "RETURN" if location_id else "NO_RESTOCK"
+	refund_lines = []
+	for line in refundable_lines:
+		payload = {
+			"lineItemId": _to_line_item_gid(line["line_id"]),
+			"quantity": line["refundable_qty"],
+			"restockType": restock_type,
+		}
+		if location_id:
+			payload["locationId"] = _to_location_gid(location_id)
+		refund_lines.append(payload)
+
+	resp = _graphql(
+		setting,
+		"""
+		mutation refundCreate($input: RefundInput!) {
+			refundCreate(input: $input) {
+				refund {
+					id
+				}
+				userErrors {
+					field
+					message
+				}
+			}
+		}
+		""",
+		{
+			"input": {
+				"orderId": order_gid,
+				"notify": True,
+				"note": "Manual refund triggered from ERPNext Sales Order",
+				"refundLineItems": refund_lines,
+			}
+		},
+	)
+	_check_user_errors(resp, "refundCreate")
+
+	create_shopify_log(
+		status="Success",
+		method="shopify.order_edit.trigger_shopify_refund",
+		message=f"Refund triggered from SO {so.name} for Shopify order {order_id}",
+		request_data={"sales_order": so.name, "shopify_order_id": order_id, "refund_lines": refund_lines},
+		make_new=True,
+	)
+	return {"ok": True}
+
+
+def _get_order_action_facts(order_gid, setting):
+	resp = _graphql(
+		setting,
+		"""
+		query orderActionState($id: ID!) {
+			order(id: $id) {
+				id
+				displayFinancialStatus
+				totalOutstandingSet {
+					shopMoney {
+						amount
+						currencyCode
+					}
+				}
+				lineItems(first: 250) {
+					edges {
+						node {
+							refundableQuantity
+						}
+					}
+				}
+			}
+		}
+		""",
+		{"id": order_gid},
+	)
+	order = (resp.get("data") or {}).get("order") or {}
+	outstanding_shop_money = (order.get("totalOutstandingSet") or {}).get("shopMoney") or {}
+	refundable_qty = 0
+	for edge in (order.get("lineItems") or {}).get("edges") or []:
+		node = edge.get("node") or {}
+		refundable_qty += cint(node.get("refundableQuantity"))
+
+	return {
+		"refundable_qty": refundable_qty,
+		"outstanding_amount": flt(outstanding_shop_money.get("amount")),
+		"currency": outstanding_shop_money.get("currencyCode"),
+		"display_financial_status": order.get("displayFinancialStatus"),
+	}
+
+
+def _get_refundable_lines(order_gid, setting):
+	resp = _graphql(
+		setting,
+		"""
+		query orderRefundableLines($id: ID!) {
+			order(id: $id) {
+				lineItems(first: 250) {
+					edges {
+						node {
+							id
+							refundableQuantity
+						}
+					}
+				}
+			}
+		}
+		""",
+		{"id": order_gid},
+	)
+	lines = []
+	order = (resp.get("data") or {}).get("order") or {}
+	for edge in (order.get("lineItems") or {}).get("edges") or []:
+		node = edge.get("node") or {}
+		qty = cint(node.get("refundableQuantity"))
+		if qty <= 0:
+			continue
+		line_gid = cstr(node.get("id"))
+		line_id = line_gid.rsplit("/", 1)[-1]
+		if not line_id:
+			continue
+		lines.append({"line_id": line_id, "refundable_qty": qty})
+	return lines
